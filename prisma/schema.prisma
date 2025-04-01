@@ -1,0 +1,131 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Pessoa {
+  pes_id              Int      @id @default(autoincrement())
+  pes_nome            String   @db.VarChar(200)
+  pes_data_nascimento DateTime @db.Date
+  pes_sexo            String   @db.VarChar(9)
+  pes_mae             String   @db.VarChar(200)
+  pes_pai             String   @db.VarChar(200)
+
+  fotos               FotoPessoa[]
+  enderecos           PessoaEndereco[]
+  servidor_temporario ServidorTemporario?
+  servidor_efetivo    ServidorEfetivo?
+  lotacoes            Lotacao[]
+
+  @@map("pessoa")
+}
+
+model FotoPessoa {
+  fp_id     Int      @id @default(autoincrement())
+  pes_id    Int
+  fp_data   DateTime @db.Date
+  fp_bucket String   @db.VarChar(50)
+  fp_hash   String   @db.VarChar(50)
+
+  pessoa Pessoa @relation(fields: [pes_id], references: [pes_id])
+
+  @@map("foto_pessoa")
+}
+
+model Endereco {
+  end_id              Int    @id @default(autoincrement())
+  end_tipo_logradouro String @db.VarChar(50)
+  end_logradouro      String @db.VarChar(200)
+  end_numero          Int
+  end_bairro          String @db.VarChar(100)
+  cid_id              Int
+
+  cidade   Cidade            @relation(fields: [cid_id], references: [cid_id])
+  pessoas  PessoaEndereco[]
+  unidades UnidadeEndereco[]
+
+  @@map("endereco")
+}
+
+model Cidade {
+  cid_id   Int    @id @default(autoincrement())
+  cid_nome String @db.VarChar(200)
+  cid_uf   String @db.Char(2)
+
+  enderecos Endereco[]
+
+  @@map("cidade")
+}
+
+model PessoaEndereco {
+  pes_id Int
+  end_id Int
+
+  pessoa   Pessoa   @relation(fields: [pes_id], references: [pes_id])
+  endereco Endereco @relation(fields: [end_id], references: [end_id])
+
+  @@id([pes_id, end_id])
+  @@map("pessoa_endereco")
+}
+
+model ServidorTemporario {
+  pes_id           Int      @id
+  st_data_admissao DateTime @db.Date
+  st_data_demissao DateTime @db.Date
+
+  pessoa Pessoa @relation(fields: [pes_id], references: [pes_id])
+
+  @@map("servidor_temporario")
+}
+
+model ServidorEfetivo {
+  pes_id       Int    @id
+  se_matricula String @db.VarChar(20)
+
+  pessoa Pessoa @relation(fields: [pes_id], references: [pes_id])
+
+  @@map("servidor_efetivo")
+}
+
+model Unidade {
+  unid_id    Int    @id @default(autoincrement())
+  unid_nome  String @db.VarChar(200)
+  unid_sigla String @db.VarChar(20)
+
+  lotacoes  Lotacao[]
+  enderecos UnidadeEndereco[]
+
+  @@map("unidade")
+}
+
+model Lotacao {
+  lot_id           Int      @id @default(autoincrement())
+  pes_id           Int
+  unid_id          Int
+  lot_data_lotacao DateTime @db.Date
+  lot_data_remocao DateTime @db.Date
+  lot_portaria     String   @db.VarChar(100)
+
+  pessoa  Pessoa  @relation(fields: [pes_id], references: [pes_id])
+  unidade Unidade @relation(fields: [unid_id], references: [unid_id])
+
+  @@map("lotacao")
+}
+
+model UnidadeEndereco {
+  unid_id Int
+  end_id  Int
+
+  unidade  Unidade  @relation(fields: [unid_id], references: [unid_id])
+  endereco Endereco @relation(fields: [end_id], references: [end_id])
+
+  @@id([unid_id, end_id])
+  @@map("unidade_endereco")
+}
