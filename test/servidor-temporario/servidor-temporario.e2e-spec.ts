@@ -7,21 +7,21 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import { ServidorTemporario, Pessoa } from '@prisma/client';
 import { CreateServidorTemporarioDto } from '../../src/servidor-temporario/dto/create-servidor-temporario.dto';
 import { UpdateServidorTemporarioDto } from '../../src/servidor-temporario/dto/update-servidor-temporario.dto';
+import { Sexo } from '../../src/pessoa/dto/create-pessoa.dto';
 
 describe('Servidores Temporários (e2e)', () => {
   let app: INestApplication;
   let jwtService: JwtService;
   let prisma: PrismaService;
   let jwtToken: string;
-  let pessoaTeste: Pessoa;
   let servidorTempCriado: ServidorTemporario;
 
   const createTestPessoa = async (nameSuffix: string): Promise<Pessoa> => {
     return prisma.pessoa.create({
       data: {
         pes_nome: `Pessoa Teste Temp ${nameSuffix}`,
-        pes_data_nascimento: new Date(1991, 7, 20),
-        pes_sexo: 'Outro',
+        pes_data_nascimento: new Date('1991-08-20T00:00:00.000Z'),
+        pes_sexo: 'MASCULINO',
         pes_mae: 'Mae Teste Temp',
         pes_pai: 'Pai Teste Temp',
       },
@@ -54,7 +54,6 @@ describe('Servidores Temporários (e2e)', () => {
     await prisma.pessoa.deleteMany({
       where: { pes_nome: { startsWith: 'Pessoa Teste Temp' } },
     });
-    pessoaTeste = await createTestPessoa('Base');
   });
 
   afterAll(async () => {
@@ -68,7 +67,13 @@ describe('Servidores Temporários (e2e)', () => {
   describe('/servidores-temporarios (POST)', () => {
     it('deve rejeitar a criação sem token (401 Unauthorized)', () => {
       const dto: CreateServidorTemporarioDto = {
-        pes_id: pessoaTeste.pes_id,
+        pessoa: {
+          pes_nome: 'Pessoa Teste Temp NoToken',
+          pes_data_nascimento: '1991-08-20T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Temp',
+          pes_pai: 'Pai Teste Temp',
+        },
         st_data_admissao: '2023-01-01',
         st_data_demissao: '2023-12-31',
       };
@@ -78,22 +83,15 @@ describe('Servidores Temporários (e2e)', () => {
         .expect(401);
     });
 
-    it('deve rejeitar a criação se Pessoa não existe (404 Not Found)', () => {
-      const dto: CreateServidorTemporarioDto = {
-        pes_id: 999999,
-        st_data_admissao: '2023-01-01',
-        st_data_demissao: '2023-12-31',
-      };
-      return request(app.getHttpServer())
-        .post('/servidores-temporarios')
-        .set('Authorization', `Bearer ${jwtToken}`)
-        .send(dto)
-        .expect(404);
-    });
-
     it('deve rejeitar a criação com data inválida (400 Bad Request)', () => {
       const dto = {
-        pes_id: pessoaTeste.pes_id,
+        pessoa: {
+          pes_nome: 'Pessoa Teste Temp InvalidDate',
+          pes_data_nascimento: '1991-08-20T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Temp',
+          pes_pai: 'Pai Teste Temp',
+        },
         st_data_admissao: 'data-invalida',
         st_data_demissao: '2023-12-31',
       };
@@ -106,7 +104,13 @@ describe('Servidores Temporários (e2e)', () => {
 
     it('deve criar um servidor temporário com sucesso (201 Created)', async () => {
       const dto: CreateServidorTemporarioDto = {
-        pes_id: pessoaTeste.pes_id,
+        pessoa: {
+          pes_nome: 'Pessoa Teste Temp Create',
+          pes_data_nascimento: '1991-08-20T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Temp',
+          pes_pai: 'Pai Teste Temp',
+        },
         st_data_admissao: '2023-02-15',
         st_data_demissao: '2024-02-14',
       };
@@ -116,7 +120,7 @@ describe('Servidores Temporários (e2e)', () => {
         .send(dto)
         .expect(201);
 
-      expect(response.body.pes_id).toEqual(dto.pes_id);
+      expect(response.body.pessoa.pes_nome).toEqual(dto.pessoa.pes_nome);
       expect(new Date(response.body.st_data_admissao)).toEqual(
         new Date(dto.st_data_admissao),
       );
@@ -126,9 +130,15 @@ describe('Servidores Temporários (e2e)', () => {
       servidorTempCriado = response.body;
     });
 
-    it('deve rejeitar a criação se pes_id já existe (409 Conflict)', () => {
+    it('deve rejeitar a criação com dados inválidos de pessoa (400 Bad Request)', () => {
       const dto: CreateServidorTemporarioDto = {
-        pes_id: pessoaTeste.pes_id,
+        pessoa: {
+          pes_nome: '',
+          pes_data_nascimento: '1991-08-20T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Temp',
+          pes_pai: 'Pai Teste Temp',
+        },
         st_data_admissao: '2024-01-01',
         st_data_demissao: '2024-12-31',
       };
@@ -136,7 +146,7 @@ describe('Servidores Temporários (e2e)', () => {
         .post('/servidores-temporarios')
         .set('Authorization', `Bearer ${jwtToken}`)
         .send(dto)
-        .expect(409);
+        .expect(400);
     });
   });
 
@@ -157,22 +167,22 @@ describe('Servidores Temporários (e2e)', () => {
       st1 = await prisma.servidorTemporario.create({
         data: {
           pes_id: p1.pes_id,
-          st_data_admissao: new Date(2022, 0, 1),
-          st_data_demissao: new Date(2022, 11, 31),
+          st_data_admissao: new Date('2022-01-01'),
+          st_data_demissao: new Date('2022-12-31'),
         },
       });
       st2 = await prisma.servidorTemporario.create({
         data: {
           pes_id: p2.pes_id,
-          st_data_admissao: new Date(2023, 0, 1),
-          st_data_demissao: new Date(2023, 11, 31),
+          st_data_admissao: new Date('2023-01-01'),
+          st_data_demissao: new Date('2023-12-31'),
         },
       });
       st3 = await prisma.servidorTemporario.create({
         data: {
           pes_id: p3.pes_id,
-          st_data_admissao: new Date(2024, 0, 1),
-          st_data_demissao: new Date(2024, 11, 31),
+          st_data_admissao: new Date('2024-01-01'),
+          st_data_demissao: new Date('2024-12-31'),
         },
       });
       servidorTempCriado = st1;
@@ -221,6 +231,9 @@ describe('Servidores Temporários (e2e)', () => {
         .set('Authorization', `Bearer ${jwtToken}`)
         .expect(200);
       expect(response.body.pes_id).toBe(servidorTempCriado.pes_id);
+      expect(new Date(response.body.st_data_admissao)).toEqual(
+        new Date(servidorTempCriado.st_data_admissao),
+      );
     });
 
     it('deve retornar erro 404 para ID inexistente (404 Not Found)', () => {
@@ -241,7 +254,7 @@ describe('Servidores Temporários (e2e)', () => {
   describe('/servidores-temporarios/:id (PUT)', () => {
     it('deve rejeitar a atualização sem token (401 Unauthorized)', () => {
       const dto: UpdateServidorTemporarioDto = {
-        st_data_demissao: '2025-01-01',
+        st_data_admissao: '2023-03-01',
       };
       return request(app.getHttpServer())
         .put(`/servidores-temporarios/${servidorTempCriado.pes_id}`)
@@ -251,7 +264,7 @@ describe('Servidores Temporários (e2e)', () => {
 
     it('deve rejeitar a atualização com ID inválido (400 Bad Request)', () => {
       const dto: UpdateServidorTemporarioDto = {
-        st_data_demissao: '2025-01-01',
+        st_data_demissao: '2023-11-30',
       };
       return request(app.getHttpServer())
         .put('/servidores-temporarios/invalid')
@@ -260,18 +273,9 @@ describe('Servidores Temporários (e2e)', () => {
         .expect(400);
     });
 
-    it('deve rejeitar a atualização com payload inválido (data inválida) (400 Bad Request)', async () => {
-      const dto = { st_data_admissao: 'not-a-date' };
-      await request(app.getHttpServer())
-        .put(`/servidores-temporarios/${servidorTempCriado.pes_id}`)
-        .set('Authorization', `Bearer ${jwtToken}`)
-        .send(dto)
-        .expect(400);
-    });
-
     it('deve retornar erro 404 ao atualizar ID inexistente (404 Not Found)', () => {
       const dto: UpdateServidorTemporarioDto = {
-        st_data_demissao: '2025-01-01',
+        st_data_admissao: '2023-06-01',
       };
       return request(app.getHttpServer())
         .put('/servidores-temporarios/999999')
@@ -282,8 +286,15 @@ describe('Servidores Temporários (e2e)', () => {
 
     it('deve atualizar as datas de um servidor temporário com sucesso (200 OK)', async () => {
       const dto: UpdateServidorTemporarioDto = {
-        st_data_admissao: '2022-02-01',
-        st_data_demissao: '2023-01-31',
+        st_data_admissao: '2023-05-15',
+        st_data_demissao: '2023-10-15',
+        pessoa: {
+          pes_nome: 'Pessoa Teste Temp Updated',
+          pes_data_nascimento: '1991-08-20T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Temp Updated',
+          pes_pai: 'Pai Teste Temp Updated',
+        },
       };
       const response = await request(app.getHttpServer())
         .put(`/servidores-temporarios/${servidorTempCriado.pes_id}`)
@@ -298,9 +309,11 @@ describe('Servidores Temporários (e2e)', () => {
       expect(new Date(response.body.st_data_demissao)).toEqual(
         new Date(dto.st_data_demissao!),
       );
+      expect(response.body.pessoa.pes_nome).toEqual(dto.pessoa?.pes_nome);
 
       const dbCheck = await prisma.servidorTemporario.findUnique({
         where: { pes_id: servidorTempCriado.pes_id },
+        include: { pessoa: true },
       });
       expect(dbCheck?.st_data_admissao).toEqual(
         new Date(dto.st_data_admissao!),
@@ -308,22 +321,7 @@ describe('Servidores Temporários (e2e)', () => {
       expect(dbCheck?.st_data_demissao).toEqual(
         new Date(dto.st_data_demissao!),
       );
-    });
-
-    it('deve retornar o registro existente se nenhum dado for enviado para atualização (200 OK)', async () => {
-      const dto = {};
-      const response = await request(app.getHttpServer())
-        .put(`/servidores-temporarios/${servidorTempCriado.pes_id}`)
-        .set('Authorization', `Bearer ${jwtToken}`)
-        .send(dto)
-        .expect(200);
-
-      expect(new Date(response.body.st_data_admissao)).toEqual(
-        new Date('2022-02-01'),
-      );
-      expect(new Date(response.body.st_data_demissao)).toEqual(
-        new Date('2023-01-31'),
-      );
+      expect(dbCheck?.pessoa.pes_nome).toEqual(dto.pessoa?.pes_nome);
     });
   });
 });

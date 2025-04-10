@@ -4,12 +4,21 @@ import {
   IsString,
   Length,
   IsNotEmpty,
+  ValidateNested,
+  IsOptional,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreatePessoaDto } from '../../pessoa/dto/create-pessoa.dto';
 
 export class CreateLotacaoDto {
+  @IsOptional()
   @IsInt()
-  @IsNotEmpty()
-  pes_id: number;
+  pes_id?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreatePessoaDto)
+  pessoa?: CreatePessoaDto;
 
   @IsInt()
   @IsNotEmpty()

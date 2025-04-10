@@ -7,13 +7,13 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import { ServidorEfetivo, Pessoa } from '@prisma/client';
 import { CreateServidorEfetivoDto } from '../../src/servidor-efetivo/dto/create-servidor-efetivo.dto';
 import { UpdateServidorEfetivoDto } from '../../src/servidor-efetivo/dto/update-servidor-efetivo.dto';
+import { Sexo } from '../../src/pessoa/dto/create-pessoa.dto';
 
 describe('Servidores Efetivos (e2e)', () => {
   let app: INestApplication;
   let jwtService: JwtService;
   let prisma: PrismaService;
   let jwtToken: string;
-  let pessoaTeste: Pessoa;
   let servidorEfetivoCriado: ServidorEfetivo;
 
   const createTestPessoa = async (nameSuffix: string): Promise<Pessoa> => {
@@ -21,7 +21,7 @@ describe('Servidores Efetivos (e2e)', () => {
       data: {
         pes_nome: `Pessoa Teste Efetivo ${nameSuffix}`,
         pes_data_nascimento: new Date(1990, 5, 15),
-        pes_sexo: 'Outro',
+        pes_sexo: 'MASCULINO',
         pes_mae: 'Mae Teste',
         pes_pai: 'Pai Teste',
       },
@@ -54,7 +54,6 @@ describe('Servidores Efetivos (e2e)', () => {
     await prisma.pessoa.deleteMany({
       where: { pes_nome: { startsWith: 'Pessoa Teste Efetivo' } },
     });
-    pessoaTeste = await createTestPessoa('Base');
   });
 
   afterAll(async () => {
@@ -68,7 +67,13 @@ describe('Servidores Efetivos (e2e)', () => {
   describe('/servidores-efetivos (POST)', () => {
     it('deve rejeitar a criação sem token (401 Unauthorized)', () => {
       const dto: CreateServidorEfetivoDto = {
-        pes_id: pessoaTeste.pes_id,
+        pessoa: {
+          pes_nome: 'Pessoa Teste Efetivo NoToken',
+          pes_data_nascimento: '1990-06-15',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste',
+          pes_pai: 'Pai Teste',
+        },
         se_matricula: 'SEMTOKEN',
       };
       return request(app.getHttpServer())
@@ -77,21 +82,15 @@ describe('Servidores Efetivos (e2e)', () => {
         .expect(401);
     });
 
-    it('deve rejeitar a criação se Pessoa não existe (404 Not Found)', () => {
-      const dto: CreateServidorEfetivoDto = {
-        pes_id: 999999,
-        se_matricula: 'INVALPESS',
-      };
-      return request(app.getHttpServer())
-        .post('/servidores-efetivos')
-        .set('Authorization', `Bearer ${jwtToken}`)
-        .send(dto)
-        .expect(404);
-    });
-
     it('deve criar um servidor efetivo com sucesso (201 Created)', async () => {
       const dto: CreateServidorEfetivoDto = {
-        pes_id: pessoaTeste.pes_id,
+        pessoa: {
+          pes_nome: 'Pessoa Teste Efetivo Create',
+          pes_data_nascimento: '1990-06-15',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste',
+          pes_pai: 'Pai Teste',
+        },
         se_matricula: 'MATR001',
       };
       const response = await request(app.getHttpServer())
@@ -100,21 +99,27 @@ describe('Servidores Efetivos (e2e)', () => {
         .send(dto)
         .expect(201);
 
-      expect(response.body.pes_id).toEqual(dto.pes_id);
       expect(response.body.se_matricula).toEqual(dto.se_matricula);
+      expect(response.body.pessoa.pes_nome).toEqual(dto.pessoa.pes_nome);
       servidorEfetivoCriado = response.body;
     });
 
-    it('deve rejeitar a criação se pes_id já existe (409 Conflict)', () => {
+    it('deve rejeitar a criação com dados inválidos de pessoa (400 Bad Request)', () => {
       const dto: CreateServidorEfetivoDto = {
-        pes_id: pessoaTeste.pes_id,
+        pessoa: {
+          pes_nome: '', // nome vazio deve ser rejeitado
+          pes_data_nascimento: '1990-06-15',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste',
+          pes_pai: 'Pai Teste',
+        },
         se_matricula: 'MATRDUPL',
       };
       return request(app.getHttpServer())
         .post('/servidores-efetivos')
         .set('Authorization', `Bearer ${jwtToken}`)
         .send(dto)
-        .expect(409);
+        .expect(400);
     });
   });
 
@@ -243,7 +248,16 @@ describe('Servidores Efetivos (e2e)', () => {
     });
 
     it('deve atualizar a matrícula de um servidor efetivo com sucesso (200 OK)', async () => {
-      const dto: UpdateServidorEfetivoDto = { se_matricula: 'MATR-UPDATED' };
+      const dto: UpdateServidorEfetivoDto = {
+        se_matricula: 'MATR-UPDATED',
+        pessoa: {
+          pes_nome: 'Pessoa Teste Efetivo Updated',
+          pes_data_nascimento: '1990-06-15',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Updated',
+          pes_pai: 'Pai Teste Updated',
+        },
+      };
       const response = await request(app.getHttpServer())
         .put(`/servidores-efetivos/${servidorEfetivoCriado.pes_id}`)
         .set('Authorization', `Bearer ${jwtToken}`)
@@ -252,11 +266,14 @@ describe('Servidores Efetivos (e2e)', () => {
 
       expect(response.body.pes_id).toBe(servidorEfetivoCriado.pes_id);
       expect(response.body.se_matricula).toBe(dto.se_matricula);
+      expect(response.body.pessoa.pes_nome).toBe(dto.pessoa?.pes_nome);
 
       const dbCheck = await prisma.servidorEfetivo.findUnique({
         where: { pes_id: servidorEfetivoCriado.pes_id },
+        include: { pessoa: true },
       });
       expect(dbCheck?.se_matricula).toBe(dto.se_matricula);
+      expect(dbCheck?.pessoa.pes_nome).toBe(dto.pessoa?.pes_nome);
     });
   });
 });

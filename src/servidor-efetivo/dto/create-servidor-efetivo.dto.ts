@@ -1,9 +1,12 @@
-import { IsInt, IsString, Length, IsNotEmpty } from 'class-validator';
+import { IsNotEmpty, IsString, Length, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreatePessoaDto } from '../../pessoa/dto/create-pessoa.dto';
 
 export class CreateServidorEfetivoDto {
-  @IsInt()
+  @ValidateNested()
+  @Type(() => CreatePessoaDto)
   @IsNotEmpty()
-  pes_id: number;
+  pessoa: CreatePessoaDto;
 
   @IsString()
   @IsNotEmpty()
