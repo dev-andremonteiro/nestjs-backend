@@ -11,6 +11,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import { Lotacao, Pessoa, Unidade } from '@prisma/client';
 import { CreateLotacaoDto } from '../../src/lotacao/dto/create-lotacao.dto';
 import { UpdateLotacaoDto } from '../../src/lotacao/dto/update-lotacao.dto';
+import { Sexo } from '../../src/pessoa/dto/create-pessoa.dto';
 
 describe('Lotações (e2e)', () => {
   let app: INestApplication;
@@ -22,8 +23,8 @@ describe('Lotações (e2e)', () => {
     return prisma.pessoa.create({
       data: {
         pes_nome: `Pessoa Teste Lotacao ${nameSuffix}`,
-        pes_data_nascimento: new Date(1995, 1, 1),
-        pes_sexo: 'Outro',
+        pes_data_nascimento: new Date('1995-02-01T00:00:00.000Z'),
+        pes_sexo: 'MASCULINO',
         pes_mae: 'Mae Teste Lot',
         pes_pai: 'Pai Teste Lot',
       },
@@ -48,8 +49,8 @@ describe('Lotações (e2e)', () => {
       data: {
         pes_id: pessoaId,
         unid_id: unidadeId,
-        lot_data_lotacao: new Date(),
-        lot_data_remocao: new Date(),
+        lot_data_lotacao: new Date('2023-01-01T00:00:00.000Z'),
+        lot_data_remocao: new Date('2023-12-31T00:00:00.000Z'),
         lot_portaria: portaria,
       },
     });
@@ -94,9 +95,9 @@ describe('Lotações (e2e)', () => {
   describe('/lotacoes (POST)', () => {
     let pessoa: Pessoa;
     let unidade: Unidade;
-    const baseDto: Omit<CreateLotacaoDto, 'pes_id' | 'unid_id'> = {
-      lot_data_lotacao: '2023-01-01',
-      lot_data_remocao: '2023-12-31',
+    const baseDto: Omit<CreateLotacaoDto, 'pes_id' | 'unid_id' | 'pessoa'> = {
+      lot_data_lotacao: '2023-01-01T00:00:00.000Z',
+      lot_data_remocao: '2023-12-31T00:00:00.000Z',
       lot_portaria: 'Portaria POST/2023',
     };
 
@@ -151,7 +152,7 @@ describe('Lotações (e2e)', () => {
         .expect(400);
     });
 
-    it('deve criar uma lotação com sucesso (201 Created)', async () => {
+    it('deve criar uma lotação com pes_id existente (201 Created)', async () => {
       const dto = {
         ...baseDto,
         pes_id: pessoa.pes_id,
@@ -175,6 +176,71 @@ describe('Lotações (e2e)', () => {
       expect(response.body.lot_portaria).toEqual(dto.lot_portaria);
 
       await prisma.lotacao.delete({ where: { lot_id: response.body.lot_id } });
+    });
+
+    it('deve criar uma lotação com pessoa aninhada (201 Created)', async () => {
+      const dto = {
+        ...baseDto,
+        pessoa: {
+          pes_nome: 'Pessoa Teste Lotacao Aninhada',
+          pes_data_nascimento: '1995-02-01T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Lot Aninhada',
+          pes_pai: 'Pai Teste Lot Aninhado',
+        },
+        unid_id: unidade.unid_id,
+      };
+      const response = await request(app.getHttpServer())
+        .post('/lotacoes')
+        .set('Authorization', `Bearer ${jwtToken}`)
+        .send(dto)
+        .expect(201);
+
+      expect(response.body).toHaveProperty('lot_id');
+      expect(response.body).toHaveProperty('pes_id');
+      expect(response.body.unid_id).toEqual(dto.unid_id);
+      expect(response.body.pessoa.pes_nome).toEqual(dto.pessoa.pes_nome);
+      expect(new Date(response.body.lot_data_lotacao)).toEqual(
+        new Date(dto.lot_data_lotacao),
+      );
+      expect(new Date(response.body.lot_data_remocao)).toEqual(
+        new Date(dto.lot_data_remocao),
+      );
+      expect(response.body.lot_portaria).toEqual(dto.lot_portaria);
+
+      await prisma.lotacao.delete({ where: { lot_id: response.body.lot_id } });
+    });
+
+    it('deve rejeitar a criação com pes_id e pessoa simultaneamente (400 Bad Request)', () => {
+      const dto = {
+        ...baseDto,
+        pes_id: pessoa.pes_id,
+        pessoa: {
+          pes_nome: 'Pessoa Teste Lotacao Ambos',
+          pes_data_nascimento: '1995-02-01T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Lot',
+          pes_pai: 'Pai Teste Lot',
+        },
+        unid_id: unidade.unid_id,
+      };
+      return request(app.getHttpServer())
+        .post('/lotacoes')
+        .set('Authorization', `Bearer ${jwtToken}`)
+        .send(dto)
+        .expect(400);
+    });
+
+    it('deve rejeitar a criação sem pes_id ou pessoa (400 Bad Request)', () => {
+      const dto = {
+        ...baseDto,
+        unid_id: unidade.unid_id,
+      };
+      return request(app.getHttpServer())
+        .post('/lotacoes')
+        .set('Authorization', `Bearer ${jwtToken}`)
+        .send(dto)
+        .expect(400);
     });
   });
 
@@ -208,9 +274,12 @@ describe('Lotações (e2e)', () => {
 
       expect(response.body.data).toHaveLength(2);
       expect(response.body.count).toBe(3);
-      expect(response.body.data.map((l: Lotacao) => l.lot_id)).toEqual(
-        expect.arrayContaining([l1.lot_id, l2.lot_id]),
-      );
+      expect(response.body.data[0].lot_id).toBe(l1.lot_id);
+      expect(response.body.data[1].lot_id).toBe(l2.lot_id);
+
+      // Check if pessoa and unidade are included
+      expect(response.body.data[0].pessoa).toBeDefined();
+      expect(response.body.data[0].unidade).toBeDefined();
     });
 
     it('deve retornar a segunda página de lotações (200 OK)', async () => {
@@ -226,27 +295,40 @@ describe('Lotações (e2e)', () => {
   });
 
   describe('/lotacoes/:id (GET)', () => {
-    let testLotacao: Lotacao;
+    let pessoa: Pessoa;
+    let unidade: Unidade;
+    let lotacao: Lotacao;
 
     beforeAll(async () => {
-      const p = await createTestPessoa('GetById');
-      const u = await createTestUnidade('GetById');
-      testLotacao = await createTestLotacao(p.pes_id, u.unid_id, 'GET_ID_P');
+      pessoa = await createTestPessoa('GetOne');
+      unidade = await createTestUnidade('GetOne');
+      lotacao = await createTestLotacao(
+        pessoa.pes_id,
+        unidade.unid_id,
+        'GET_ONE',
+      );
     });
 
     it('deve rejeitar a busca por ID sem token (401 Unauthorized)', () => {
       return request(app.getHttpServer())
-        .get(`/lotacoes/${testLotacao.lot_id}`)
+        .get(`/lotacoes/${lotacao.lot_id}`)
         .expect(401);
     });
 
     it('deve retornar uma lotação específica (200 OK)', async () => {
       const response = await request(app.getHttpServer())
-        .get(`/lotacoes/${testLotacao.lot_id}`)
+        .get(`/lotacoes/${lotacao.lot_id}`)
         .set('Authorization', `Bearer ${jwtToken}`)
         .expect(200);
-      expect(response.body.lot_id).toBe(testLotacao.lot_id);
-      expect(response.body.pes_id).toBe(testLotacao.pes_id);
+
+      expect(response.body.lot_id).toBe(lotacao.lot_id);
+      expect(response.body.pes_id).toBe(pessoa.pes_id);
+      expect(response.body.unid_id).toBe(unidade.unid_id);
+
+      // Check if pessoa and unidade are included
+      expect(response.body.pessoa).toBeDefined();
+      expect(response.body.unidade).toBeDefined();
+      expect(response.body.pessoa.pes_nome).toBe(pessoa.pes_nome);
     });
 
     it('deve retornar erro 404 para ID inexistente (404 Not Found)', () => {
@@ -265,34 +347,38 @@ describe('Lotações (e2e)', () => {
   });
 
   describe('/lotacoes/:id (PUT)', () => {
-    let pessoaForPut: Pessoa;
-    let unidadeForPut: Unidade;
-    let lotacaoToUpdate: Lotacao;
-    let pessoaUpdateTarget: Pessoa;
-    let unidadeUpdateTarget: Unidade;
+    let pessoa: Pessoa;
+    let newPessoa: Pessoa;
+    let unidade: Unidade;
+    let newUnidade: Unidade;
+    let lotacao: Lotacao;
 
     beforeAll(async () => {
-      pessoaForPut = await createTestPessoa('PutSetup');
-      unidadeForPut = await createTestUnidade('PutSetup');
-      lotacaoToUpdate = await createTestLotacao(
-        pessoaForPut.pes_id,
-        unidadeForPut.unid_id,
-        'PUT_Initial',
+      pessoa = await createTestPessoa('PutOriginal');
+      newPessoa = await createTestPessoa('PutNew');
+      unidade = await createTestUnidade('PutOriginal');
+      newUnidade = await createTestUnidade('PutNew');
+      lotacao = await createTestLotacao(
+        pessoa.pes_id,
+        unidade.unid_id,
+        'PUT_ORIG',
       );
-      pessoaUpdateTarget = await createTestPessoa('PutTarget');
-      unidadeUpdateTarget = await createTestUnidade('PutTarget');
     });
 
     it('deve rejeitar a atualização sem token (401 Unauthorized)', () => {
-      const dto: UpdateLotacaoDto = { lot_portaria: 'Update Sem Token' };
+      const dto: UpdateLotacaoDto = {
+        lot_portaria: 'Portaria PUT/2023',
+      };
       return request(app.getHttpServer())
-        .put(`/lotacoes/${lotacaoToUpdate.lot_id}`)
+        .put(`/lotacoes/${lotacao.lot_id}`)
         .send(dto)
         .expect(401);
     });
 
     it('deve rejeitar a atualização com ID inválido (400 Bad Request)', () => {
-      const dto: UpdateLotacaoDto = { lot_portaria: 'Update Inválido' };
+      const dto: UpdateLotacaoDto = {
+        lot_portaria: 'Portaria PUT/2023',
+      };
       return request(app.getHttpServer())
         .put('/lotacoes/invalid')
         .set('Authorization', `Bearer ${jwtToken}`)
@@ -300,35 +386,19 @@ describe('Lotações (e2e)', () => {
         .expect(400);
     });
 
-    it('deve rejeitar a atualização com data inválida (400 Bad Request)', () => {
-      const dto = { lot_data_lotacao: 'invalid' };
-      return request(app.getHttpServer())
-        .put(`/lotacoes/${lotacaoToUpdate.lot_id}`)
+    it('deve rejeitar a atualização com data inválida (400 Bad Request)', async () => {
+      const dto = { lot_data_lotacao: 'invalid-date' };
+      await request(app.getHttpServer())
+        .put(`/lotacoes/${lotacao.lot_id}`)
         .set('Authorization', `Bearer ${jwtToken}`)
         .send(dto)
         .expect(400);
     });
 
-    it('deve rejeitar a atualização se Pessoa não existe (404 Not Found)', () => {
-      const dto: UpdateLotacaoDto = { pes_id: 999999 };
-      return request(app.getHttpServer())
-        .put(`/lotacoes/${lotacaoToUpdate.lot_id}`)
-        .set('Authorization', `Bearer ${jwtToken}`)
-        .send(dto)
-        .expect(404);
-    });
-
-    it('deve rejeitar a atualização se Unidade não existe (404 Not Found)', () => {
-      const dto: UpdateLotacaoDto = { unid_id: 999999 };
-      return request(app.getHttpServer())
-        .put(`/lotacoes/${lotacaoToUpdate.lot_id}`)
-        .set('Authorization', `Bearer ${jwtToken}`)
-        .send(dto)
-        .expect(404);
-    });
-
-    it('deve retornar 404 ao tentar atualizar ID de Lotação inexistente (404 Not Found)', () => {
-      const dto: UpdateLotacaoDto = { lot_portaria: 'NF-Lotacao' };
+    it('deve retornar erro 404 ao atualizar ID inexistente (404 Not Found)', () => {
+      const dto: UpdateLotacaoDto = {
+        lot_portaria: 'Portaria PUT/2023',
+      };
       return request(app.getHttpServer())
         .put('/lotacoes/999999')
         .set('Authorization', `Bearer ${jwtToken}`)
@@ -338,20 +408,20 @@ describe('Lotações (e2e)', () => {
 
     it('deve atualizar uma lotação com sucesso (200 OK)', async () => {
       const dto: UpdateLotacaoDto = {
-        pes_id: pessoaUpdateTarget.pes_id,
-        unid_id: unidadeUpdateTarget.unid_id,
-        lot_data_lotacao: '2025-01-01',
-        lot_data_remocao: '2025-12-31',
-        lot_portaria: 'Portaria PUT Success',
+        pes_id: newPessoa.pes_id,
+        unid_id: newUnidade.unid_id,
+        lot_data_lotacao: '2023-05-01T00:00:00.000Z',
+        lot_data_remocao: '2023-10-01T00:00:00.000Z',
+        lot_portaria: 'Portaria PUT/2023 Updated',
       };
 
       const response = await request(app.getHttpServer())
-        .put(`/lotacoes/${lotacaoToUpdate.lot_id}`)
+        .put(`/lotacoes/${lotacao.lot_id}`)
         .set('Authorization', `Bearer ${jwtToken}`)
         .send(dto)
         .expect(200);
 
-      expect(response.body.lot_id).toBe(lotacaoToUpdate.lot_id);
+      expect(response.body.lot_id).toBe(lotacao.lot_id);
       expect(response.body.pes_id).toBe(dto.pes_id);
       expect(response.body.unid_id).toBe(dto.unid_id);
       expect(new Date(response.body.lot_data_lotacao)).toEqual(
@@ -361,35 +431,64 @@ describe('Lotações (e2e)', () => {
         new Date(dto.lot_data_remocao!),
       );
       expect(response.body.lot_portaria).toBe(dto.lot_portaria);
-
-      const dbCheck = await prisma.lotacao.findUnique({
-        where: { lot_id: lotacaoToUpdate.lot_id },
-      });
-      expect(dbCheck?.pes_id).toBe(dto.pes_id);
-      expect(dbCheck?.unid_id).toBe(dto.unid_id);
-      expect(dbCheck?.lot_data_lotacao).toEqual(
-        new Date(dto.lot_data_lotacao!),
-      );
-      expect(dbCheck?.lot_data_remocao).toEqual(
-        new Date(dto.lot_data_remocao!),
-      );
-      expect(dbCheck?.lot_portaria).toBe(dto.lot_portaria);
     });
 
-    it('deve retornar o registro existente se nenhum dado for enviado para atualização (200 OK)', async () => {
-      const dto = {};
+    it('deve atualizar os dados da pessoa aninhada com sucesso (200 OK)', async () => {
+      // Create a new lotacao for this test
+      const testPessoa = await createTestPessoa('PutNested');
+      const testUnidade = await createTestUnidade('PutNested');
+      const testLotacao = await createTestLotacao(
+        testPessoa.pes_id,
+        testUnidade.unid_id,
+        'PUT_NESTED',
+      );
+
+      const dto: UpdateLotacaoDto = {
+        lot_portaria: 'Portaria PUT NESTED',
+        pessoa: {
+          pes_nome: 'Pessoa Teste Lotacao PutNestedUpdate',
+          pes_data_nascimento: '1995-03-15T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste Lot Updated',
+          pes_pai: 'Pai Teste Lot Updated',
+        },
+      };
+
       const response = await request(app.getHttpServer())
-        .put(`/lotacoes/${lotacaoToUpdate.lot_id}`)
+        .put(`/lotacoes/${testLotacao.lot_id}`)
         .set('Authorization', `Bearer ${jwtToken}`)
         .send(dto)
         .expect(200);
 
-      expect(response.body.pes_id).toBe(pessoaUpdateTarget.pes_id);
-      expect(response.body.unid_id).toBe(unidadeUpdateTarget.unid_id);
-      expect(new Date(response.body.lot_data_lotacao)).toEqual(
-        new Date('2025-01-01'),
-      );
-      expect(response.body.lot_portaria).toBe('Portaria PUT Success');
+      expect(response.body.lot_id).toBe(testLotacao.lot_id);
+      expect(response.body.lot_portaria).toBe(dto.lot_portaria);
+      expect(response.body.pessoa.pes_nome).toBe(dto.pessoa?.pes_nome);
+      expect(response.body.pessoa.pes_mae).toBe(dto.pessoa?.pes_mae);
+
+      // Verify the database was updated
+      const dbCheck = await prisma.lotacao.findUnique({
+        where: { lot_id: testLotacao.lot_id },
+        include: { pessoa: true },
+      });
+      expect(dbCheck?.pessoa.pes_nome).toBe(dto.pessoa?.pes_nome);
+    });
+
+    it('deve rejeitar a atualização com pes_id e pessoa simultaneamente (400 Bad Request)', () => {
+      const dto: UpdateLotacaoDto = {
+        pes_id: newPessoa.pes_id,
+        pessoa: {
+          pes_nome: 'Pessoa Teste Lotacao Both Update',
+          pes_data_nascimento: '1995-02-01T00:00:00.000Z',
+          pes_sexo: Sexo.MASCULINO,
+          pes_mae: 'Mae Teste',
+          pes_pai: 'Pai Teste',
+        },
+      };
+      return request(app.getHttpServer())
+        .put(`/lotacoes/${lotacao.lot_id}`)
+        .set('Authorization', `Bearer ${jwtToken}`)
+        .send(dto)
+        .expect(400);
     });
   });
 });

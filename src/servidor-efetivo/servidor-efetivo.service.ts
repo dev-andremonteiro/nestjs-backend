@@ -7,8 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateServidorEfetivoDto } from './dto/create-servidor-efetivo.dto';
 import { UpdateServidorEfetivoDto } from './dto/update-servidor-efetivo.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { ServidorEfetivo } from '@prisma/client';
-import { Prisma } from '@prisma/client';
+import { Prisma, ServidorEfetivo } from '@prisma/client';
 
 @Injectable()
 export class ServidorEfetivoService {
@@ -18,19 +17,28 @@ export class ServidorEfetivoService {
     createServidorEfetivoDto: CreateServidorEfetivoDto,
   ): Promise<ServidorEfetivo> {
     try {
+      const { pessoa, ...servidorData } = createServidorEfetivoDto;
+      const { pes_data_nascimento, ...restPessoaData } = pessoa;
+
       return await this.prisma.servidorEfetivo.create({
-        data: createServidorEfetivoDto,
+        data: {
+          ...servidorData,
+          pessoa: {
+            create: {
+              ...restPessoaData,
+              pes_data_nascimento: new Date(pes_data_nascimento),
+            },
+          },
+        },
+        include: {
+          pessoa: true,
+        },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
           throw new ConflictException(
-            'ServidorEfetivo with this pes_id already exists.',
-          );
-        }
-        if (error.code === 'P2003') {
-          throw new NotFoundException(
-            `Pessoa with ID "${createServidorEfetivoDto.pes_id}" not found.`,
+            'ServidorEfetivo with this pessoa already exists.',
           );
         }
       }
@@ -66,9 +74,32 @@ export class ServidorEfetivoService {
     updateServidorEfetivoDto: UpdateServidorEfetivoDto,
   ): Promise<ServidorEfetivo> {
     try {
+      const { pessoa, ...servidorData } = updateServidorEfetivoDto;
+
+      let pessoaUpdateData: Prisma.PessoaUpdateInput | undefined;
+      if (pessoa) {
+        const { pes_data_nascimento, ...restPessoaData } = pessoa;
+        pessoaUpdateData = {
+          ...restPessoaData,
+          ...(pes_data_nascimento && {
+            pes_data_nascimento: new Date(pes_data_nascimento),
+          }),
+        };
+      }
+
       return await this.prisma.servidorEfetivo.update({
         where: { pes_id: id },
-        data: updateServidorEfetivoDto,
+        data: {
+          ...servidorData,
+          ...(pessoaUpdateData && {
+            pessoa: {
+              update: pessoaUpdateData,
+            },
+          }),
+        },
+        include: {
+          pessoa: true,
+        },
       });
     } catch (error) {
       if (

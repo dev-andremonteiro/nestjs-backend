@@ -7,8 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateServidorTemporarioDto } from './dto/create-servidor-temporario.dto';
 import { UpdateServidorTemporarioDto } from './dto/update-servidor-temporario.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { ServidorTemporario } from '@prisma/client';
-import { Prisma } from '@prisma/client';
+import { Prisma, ServidorTemporario } from '@prisma/client';
 
 @Injectable()
 export class ServidorTemporarioService {
@@ -18,23 +17,29 @@ export class ServidorTemporarioService {
     createDto: CreateServidorTemporarioDto,
   ): Promise<ServidorTemporario> {
     try {
+      const { pessoa, ...servidorData } = createDto;
+      const { pes_data_nascimento, ...restPessoaData } = pessoa;
+
       return await this.prisma.servidorTemporario.create({
         data: {
-          pes_id: createDto.pes_id,
-          st_data_admissao: new Date(createDto.st_data_admissao),
-          st_data_demissao: new Date(createDto.st_data_demissao),
+          st_data_admissao: new Date(servidorData.st_data_admissao),
+          st_data_demissao: new Date(servidorData.st_data_demissao),
+          pessoa: {
+            create: {
+              ...restPessoaData,
+              pes_data_nascimento: new Date(pes_data_nascimento),
+            },
+          },
+        },
+        include: {
+          pessoa: true,
         },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
           throw new ConflictException(
-            'ServidorTemporario with this pes_id already exists.',
-          );
-        }
-        if (error.code === 'P2003') {
-          throw new NotFoundException(
-            `Pessoa with ID "${createDto.pes_id}" not found.`,
+            'ServidorTemporario with this pessoa already exists.',
           );
         }
       }
@@ -69,24 +74,41 @@ export class ServidorTemporarioService {
     id: number,
     updateDto: UpdateServidorTemporarioDto,
   ): Promise<ServidorTemporario> {
-    const dataToUpdate: Prisma.ServidorTemporarioUpdateInput = {};
-
-    if (updateDto.st_data_admissao !== undefined) {
-      dataToUpdate.st_data_admissao = new Date(updateDto.st_data_admissao);
-    }
-    if (updateDto.st_data_demissao !== undefined) {
-      dataToUpdate.st_data_demissao = new Date(updateDto.st_data_demissao);
-    }
-
-    if (Object.keys(dataToUpdate).length === 0) {
-      const existingRecord = await this.findOne(id);
-      return existingRecord!;
-    }
-
     try {
+      const { pessoa, ...servidorData } = updateDto;
+      const dataToUpdate: Prisma.ServidorTemporarioUpdateInput = {};
+
+      if (servidorData.st_data_admissao !== undefined) {
+        dataToUpdate.st_data_admissao = new Date(servidorData.st_data_admissao);
+      }
+      if (servidorData.st_data_demissao !== undefined) {
+        dataToUpdate.st_data_demissao = new Date(servidorData.st_data_demissao);
+      }
+
+      let pessoaUpdateData: Prisma.PessoaUpdateInput | undefined;
+      if (pessoa) {
+        const { pes_data_nascimento, ...restPessoaData } = pessoa;
+        pessoaUpdateData = {
+          ...restPessoaData,
+          ...(pes_data_nascimento && {
+            pes_data_nascimento: new Date(pes_data_nascimento),
+          }),
+        };
+      }
+
       return await this.prisma.servidorTemporario.update({
         where: { pes_id: id },
-        data: dataToUpdate,
+        data: {
+          ...dataToUpdate,
+          ...(pessoaUpdateData && {
+            pessoa: {
+              update: pessoaUpdateData,
+            },
+          }),
+        },
+        include: {
+          pessoa: true,
+        },
       });
     } catch (error) {
       if (
