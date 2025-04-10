@@ -1,13 +1,13 @@
 import { IsString, Length, IsNotEmpty } from 'class-validator';
 
-export class CreateCidadeDto {
+export class CreateUnidadeDto {
   @IsString()
   @IsNotEmpty()
   @Length(1, 200)
-  cid_nome: string;
+  unid_nome: string;
 
   @IsString()
   @IsNotEmpty()
-  @Length(2, 2)
-  cid_uf: string;
+  @Length(1, 20)
+  unid_sigla: string;
 }
